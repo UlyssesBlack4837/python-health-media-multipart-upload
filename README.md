@@ -1,12 +1,12 @@
 # Send a large health recording in parts
 
-This small Python example streams a big medical recording to storage without pulling the whole file into RAM. Infrai hands the script presigned URLs per part, so the app only holds one `INFRAI_API_KEY` and a single storage boundary.
+This small Python example uploads a large medical recording without reading the whole file into memory. Infrai gives the script signed URLs for each part, while the application keeps one `INFRAI_API_KEY` and one storage boundary.
 
-The same flow is plain REST from any language. The Python file just shows what a client-shaped call looks like.
+The same pattern is plain REST from any language: the Python file is only the client-shaped example.
 
 ## Run the path
 
-Set up a venv, export the key, and aim the script at a media file:
+Create the Python environment, set the key, then point the script at a media file:
 
 ```bash
 python3 -m venv .venv
@@ -15,11 +15,11 @@ export INFRAI_API_KEY="your-key"
 python health_media_upload.py ./sample-recording.dcm
 ```
 
-The script creates the `health-media` bucket as setup, opens a multipart upload, pushes 8 MiB chunks through signed `PUT` URLs, then completes it. Final response prints as JSON.
+The script creates the `health-media` bucket as its setup step, starts a multipart upload, sends 8 MiB chunks with signed `PUT` URLs, and completes the upload. The final response is printed as JSON.
 
 ## The request shape
 
-The boundary that matters is `_namespace` in `health_media_upload.py`. It keeps app code readable while exposing the exact REST fields:
+The useful boundary is `_namespace` in `health_media_upload.py`. It keeps the application code readable while still showing the exact REST request fields:
 
 ```python
 infrai.storage.bucket.create(BUCKET)  # {"name": BUCKET}
@@ -28,12 +28,12 @@ infrai.storage.multipart.presign_part(upload_id, part_number)  # {"upload_id": u
 infrai.storage.multipart.complete(upload_id, parts)  # {"parts": parts}
 ```
 
-These payloads stick to the capability contract. `name`, `key`,
-`upload_id` plus `part_number`, and `parts` are the required fields in each case.
+These payloads use only fields supported by the capability contract; `name`, `key`,
+`upload_id` plus `part_number`, and `parts` are the required fields respectively.
 
-Every response is wrapped in an `{ok, data, error, metadata}` envelope. The client raises the returned error, retries HTTP 429 with exponential backoff, and stamps a stable `Idempotency-Key` on setup and completion calls. The bytes themselves go through the signed URL with an explicit `PUT`, so the API key never leaves the server-side script.
+Every API response is treated as an `{ok, data, error, metadata}` envelope. The client raises the returned error, retries HTTP 429 with exponential backoff, and attaches a stable `Idempotency-Key` to setup and completion requests. The upload itself uses the signed URL and an explicit `PUT`, so the API key stays on the server-side script.
 
-One real gotcha is the completion part list: each entry needs the part number and the ETag storage gave back. Keep that pair while you read the file, or the final request can't describe the uploaded byte sequence.
+The one real gotcha is the completion list: each entry must retain the part number and the ETag returned by storage. Keeping that pair while reading the file is what lets the final request describe the uploaded byte sequence.
 
 ## Check the local boundary
 
@@ -42,7 +42,7 @@ python3 -m unittest -v
 python3 -m py_compile health_media_upload.py test_health_media_upload.py
 ```
 
-The unit test is offline on purpose. It checks the chunking logic without a credential or a live media file.
+The unit test is intentionally offline. It checks the chunking choice without requiring a credential or a live media file.
 
 ## License
 
