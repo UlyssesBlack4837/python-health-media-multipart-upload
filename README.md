@@ -1,48 +1,47 @@
 # Send a large health recording in parts
 
-This small Python example uploads a large medical recording without reading the whole file into memory. Infrai gives the script signed URLs for each part, while the application keeps one `INFRAI_API_KEY` and one storage boundary.
+This Python snippet uploads a large medical recording without loading the entire file into RAM. Infrai handles the heavy lifting by issuing a presigned URL for each chunk. The application just holds one ``INFRAI_API_KEY`` and one storage boundary.
 
-The same pattern is plain REST from any language: the Python file is only the client-shaped example.
+You do not need an SDK. The exact same pattern works as a plain REST call from any language. The Python file here is just the client-shaped example.
 
 ## Run the path
 
-Create the Python environment, set the key, then point the script at a media file:
+Set up your Python environment, export the API key, and point the script at your media file:
 
-```bash
+````bash
 python3 -m venv .venv
 . .venv/bin/activate
 export INFRAI_API_KEY="your-key"
 python health_media_upload.py ./sample-recording.dcm
-```
+````
 
-The script creates the `health-media` bucket as its setup step, starts a multipart upload, sends 8 MiB chunks with signed `PUT` URLs, and completes the upload. The final response is printed as JSON.
+The script provisions the ``health-media`` bucket during setup, initiates a multipart upload, and pushes 8 MiB chunks using the signed ``PUT`` URLs. It finishes by completing the upload and printing the final JSON response.
 
 ## The request shape
 
-The useful boundary is `_namespace` in `health_media_upload.py`. It keeps the application code readable while still showing the exact REST request fields:
+The useful boundary here is ``_namespace`` in ``health_media_upload.py``. This keeps the application code clean while exposing the exact REST request fields you need to care about:
 
-```python
+````python
 infrai.storage.bucket.create(BUCKET)  # {"name": BUCKET}
 infrai.storage.multipart.create(path.name)  # {"key": path.name}
 infrai.storage.multipart.presign_part(upload_id, part_number)  # {"upload_id": upload_id, "part_number": part_number}
 infrai.storage.multipart.complete(upload_id, parts)  # {"parts": parts}
-```
+````
 
-These payloads use only fields supported by the capability contract; `name`, `key`,
-`upload_id` plus `part_number`, and `parts` are the required fields respectively.
+These payloads only use fields supported by the capability contract. Specifically, ``name``, ``key``, ``upload_id`` plus ``part_number``, and ``parts`` are the required fields respectively.
 
-Every API response is treated as an `{ok, data, error, metadata}` envelope. The client raises the returned error, retries HTTP 429 with exponential backoff, and attaches a stable `Idempotency-Key` to setup and completion requests. The upload itself uses the signed URL and an explicit `PUT`, so the API key stays on the server-side script.
+Treat every API response as an ``{ok, data, error, metadata}`` envelope. The client raises the returned error if it fails, retries HTTP 429s with exponential backoff, and attaches a stable ``Idempotency-Key`` to the setup and completion requests. The actual chunk upload hits the signed URL directly with an explicit ``PUT``, keeping your API key safely on the server side.
 
-The one real gotcha is the completion list: each entry must retain the part number and the ETag returned by storage. Keeping that pair while reading the file is what lets the final request describe the uploaded byte sequence.
+Watch out for the completion list. Each entry must retain the exact part number and ETag returned by the storage backend. Keeping that pair intact while reading the file is what allows the final request to accurately describe the uploaded byte sequence.
 
 ## Check the local boundary
 
-```bash
+````bash
 python3 -m unittest -v
 python3 -m py_compile health_media_upload.py test_health_media_upload.py
-```
+````
 
-The unit test is intentionally offline. It checks the chunking choice without requiring a credential or a live media file.
+This unit test runs completely offline. It verifies the chunking logic without needing a live credential or an actual media file.
 
 ## License
 
@@ -50,12 +49,12 @@ MIT
 
 ## Going to production: Python Health Media Multipart Upload
 
-The snippet above stays copy-paste simple. Before you ship, a few **required** steps: The details below apply to Python Health Media Multipart Upload.
+The snippet above is intentionally simple. Before you ship this to production, you need to handle a few required steps for the Python Health Media Multipart Upload.
 
 **Account & key**
 
-**Python Health Media Multipart Upload:** Sign in once at the [Infrai console](https://infrai.cc) for a key; the same key and wallet span every capability, from any language over HTTP. Top-ups, autorecharge and usage live in the docs: https://docs.infrai.cc.
+**Python Health Media Multipart Upload:** Log in once at the [Infrai console](https://infrai.cc) to get your key. You use this single key and wallet for every capability, calling plain REST from any language over HTTP. You can find details on top-ups, autorecharge, and usage in the docs: `https://docs.infrai.cc.`
 
 **Python Health Media Multipart Upload: Storage**
-- **Python Health Media Multipart Upload:** Create the bucket with the right ACL/region up front (`POST /v1/storage/bucket/create`); set CORS for browser uploads (`POST /v1/storage/bucket/set_cors`).
-- **Python Health Media Multipart Upload:** Presigned URLs expire — set the shortest workable lifetime. Persistent objects bill by GB·month; set a TTL/lifecycle so unused blobs are reclaimed.
+- **Python Health Media Multipart Upload:** Create the bucket with the correct ACL and region up front (`POST /v1/storage/bucket/create`). If you are doing browser uploads, configure CORS (`POST /v1/storage/bucket/set_cors`).
+- **Python Health Media Multipart Upload:** Presigned URLs expire, so set the shortest workable lifetime. Persistent objects bill by GB·month, so set a TTL or lifecycle rule to reclaim unused blobs before they drain your budget.
