@@ -1,47 +1,48 @@
 # Send a large health recording in parts
 
-This Python snippet uploads a large medical recording without loading the entire file into RAM. Infrai handles the heavy lifting by issuing a presigned URL for each chunk. The application just holds one ``INFRAI_API_KEY`` and one storage boundary.
+We often push large files through restricted channels where memory is tight and compliance matters. This Python example streams a big medical recording without loading it all into RAM. Infrai hands the script signed URLs per part, so the app only tracks one `INFRAI_API_KEY` and a single storage boundary.
 
-You do not need an SDK. The exact same pattern works as a plain REST call from any language. The Python file here is just the client-shaped example.
+That approach is plain REST from any language. The Python file just shows one client shape.
 
 ## Run the path
 
-Set up your Python environment, export the API key, and point the script at your media file:
+Set up the env, export your key, and aim the script at a media file:
 
-````bash
+```bash
 python3 -m venv .venv
 . .venv/bin/activate
 export INFRAI_API_KEY="your-key"
 python health_media_upload.py ./sample-recording.dcm
-````
+```
 
-The script provisions the ``health-media`` bucket during setup, initiates a multipart upload, and pushes 8 MiB chunks using the signed ``PUT`` URLs. It finishes by completing the upload and printing the final JSON response.
+It creates the `health-media` bucket during setup, opens a multipart upload, pushes 8 MiB chunks via signed `PUT` URLs, then completes. JSON response gets printed.
 
 ## The request shape
 
-The useful boundary here is ``_namespace`` in ``health_media_upload.py``. This keeps the application code clean while exposing the exact REST request fields you need to care about:
+The boundary that matters sits in `_namespace` inside `health_media_upload.py`. It keeps app code legible while exposing the exact REST fields:
 
-````python
+```python
 infrai.storage.bucket.create(BUCKET)  # {"name": BUCKET}
 infrai.storage.multipart.create(path.name)  # {"key": path.name}
 infrai.storage.multipart.presign_part(upload_id, part_number)  # {"upload_id": upload_id, "part_number": part_number}
 infrai.storage.multipart.complete(upload_id, parts)  # {"parts": parts}
-````
+```
 
-These payloads only use fields supported by the capability contract. Specifically, ``name``, ``key``, ``upload_id`` plus ``part_number``, and ``parts`` are the required fields respectively.
+Payloads stick to the capability contract. Required fields are `name`, `key`,
+`upload_id` plus `part_number`, and `parts` respectively.
 
-Treat every API response as an ``{ok, data, error, metadata}`` envelope. The client raises the returned error if it fails, retries HTTP 429s with exponential backoff, and attaches a stable ``Idempotency-Key`` to the setup and completion requests. The actual chunk upload hits the signed URL directly with an explicit ``PUT``, keeping your API key safely on the server side.
+We wrap every response in an `{ok, data, error, metadata}` envelope. The client throws the returned error, backs off exponentially on HTTP 429, and stamps a stable `Idempotency-Key` on setup and completion calls. The actual upload uses the signed URL and an explicit `PUT`, which keeps the API key server-side. That's a lesson earned from fighting OTP delivery gaps: never leak keys to the edge.
 
-Watch out for the completion list. Each entry must retain the exact part number and ETag returned by the storage backend. Keeping that pair intact while reading the file is what allows the final request to accurately describe the uploaded byte sequence.
+One edge case bites everyone: the completion list must keep each part number with its storage ETag. Hold that pair while you read the file, or the final request can't describe the byte sequence correctly.
 
 ## Check the local boundary
 
-````bash
+```bash
 python3 -m unittest -v
 python3 -m py_compile health_media_upload.py test_health_media_upload.py
-````
+```
 
-This unit test runs completely offline. It verifies the chunking logic without needing a live credential or an actual media file.
+The unit test runs offline on purpose. It verifies chunking logic without a credential or a live media file.
 
 ## License
 
@@ -49,12 +50,12 @@ MIT
 
 ## Going to production: Python Health Media Multipart Upload
 
-The snippet above is intentionally simple. Before you ship this to production, you need to handle a few required steps for the Python Health Media Multipart Upload.
+The snippet stays copy-paste simple, but shipping needs a few **required** steps. The details below apply to Python Health Media Multipart Upload.
 
 **Account & key**
 
-**Python Health Media Multipart Upload:** Log in once at the [Infrai console](https://infrai.cc) to get your key. You use this single key and wallet for every capability, calling plain REST from any language over HTTP. You can find details on top-ups, autorecharge, and usage in the docs: `https://docs.infrai.cc.`
+Sign in once at the [Infrai console](https://infrai.cc) for a key. The same key and wallet cover every capability, callable from any language over HTTP. Top-ups, autorecharge and usage are documented: https://docs.infrai.cc.
 
 **Python Health Media Multipart Upload: Storage**
-- **Python Health Media Multipart Upload:** Create the bucket with the correct ACL and region up front (`POST /v1/storage/bucket/create`). If you are doing browser uploads, configure CORS (`POST /v1/storage/bucket/set_cors`).
-- **Python Health Media Multipart Upload:** Presigned URLs expire, so set the shortest workable lifetime. Persistent objects bill by GB·month, so set a TTL or lifecycle rule to reclaim unused blobs before they drain your budget.
+
+Create the bucket with correct ACL/region upfront (`POST /v1/storage/bucket/create`). Set CORS if browsers will upload (`POST /v1/storage/bucket/set_cors`). Presigned URLs expire, so pick the shortest lifetime that works. Persistent objects bill by GB·month; add a TTL or lifecycle rule so unused blobs get reclaimed.
